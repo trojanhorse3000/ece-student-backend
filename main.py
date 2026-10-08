@@ -29,9 +29,9 @@ connection = psycopg2.connect("postgresql://neondb_owner:npg_og5OPspcQ4ui@ep-anc
 
 
 class Student(BaseModel):
-    id: int = None
-    name: str = None
-    course: str = None
+    id: int | None = None
+    name: str | None = None
+    course: str | None = None
 
 #get all students
 @app.get('/students')
@@ -86,16 +86,45 @@ def create_student_record(student: Student):
 
 # Update Student Record        
 @app.put('/students/{id}')
-def update_student_record(id:int, student: Student):
-    cursor = connection.cursor()
-    cursor.execute('UPDATE students SET id=%s, name=%s, course=%s WHERE id=%s',(student.id, student.name, student.course, id))
-    if(cursor.rowcount==0):
-      cursor.close()
-      raise HTTPException(status_code=404, detail='Invalid ID')    
-    connection.commit()
-    cursor.close()
-    raise HTTPException(status_code=200, detail='Student Record Created Successfully...!')
+def update_student_record(id: int, student: Student):
+    try:
+        if student.id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Student ID is required for PUT"
+            )
 
+        cursor.execute(
+            '''
+            UPDATE students
+            SET id=%s, name=%s, course=%s
+            WHERE id=%s
+            ''',
+            (student.id, student.name, student.course, id)
+        )
+
+        if cursor.rowcount == 0:
+            connection.rollback()
+            raise HTTPException(
+                status_code=404,
+                detail="Invalid ID"
+            )
+
+        connection.commit()
+
+        return {
+            "message": "Student Record Updated Successfully!"
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        connection.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
 # Partial Update
 @app.patch('/students/{id}')
 def partial_update(id: int, student:Student):
