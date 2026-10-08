@@ -47,6 +47,9 @@ def get_all_students():
             'course' : row[2]
         })
     return result
+@app.get("/")
+def home():
+    return {"message": "Student Management Backend is running"}
 
 @app.get('/students/{id}')
 def get_single_student(id: int):
