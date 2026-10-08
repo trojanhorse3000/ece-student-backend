@@ -1,106 +1,108 @@
-from fastapi import FastAPI, HTTPException
-import psycopg2
 from pydantic import BaseModel
-from dotenv import load_dotenv
+import psycopg2
+from fastapi import FastAPI, HTTPException
 import os
+from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
+
 load_dotenv()
 
-app = FastAPI() 
-# app -> object  , FastAPI -> class, FastAPI() -> constructor
+app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],            # Allows all
+    allow_credentials=False,           # Allows cookies/headers to be sent
+    allow_methods=["*"],              # Allows all standard HTTP methods (GET, POST, PUT, DELETE, etc.)
+    allow_headers=["*"],              # Allows all HTTP headers
+)
 connection = psycopg2.connect(
-    host=os.getenv("DB_HOST"),
-    port=os.getenv("DB_PORT"),
-    database=os.getenv("DB_DATABASE"),
-    user=os.getenv("DB_USER"),
-    password=os.getenv("DB_PASSWORD")
-    
+    host = os.getenv("DB_HOST"),
+    port = os.getenv("DB_PORT"),
+    database = os.getenv("DB_DATABASE"),
+    user = os.getenv("DB_USER"),
+    password = os.getenv("DB_PASSWORD")
 )
 
-cursor = connection.cursor() 
+cursor = connection.cursor()
 
-class Student(BaseModel): # inheriting BaseModel class from pydantic into Student class
-    id: int = None       # Also called as class based validation, which is a way to validate the data using classes and objects
+class Student(BaseModel):
+    id: int = None
     name: str = None
     course: str = None
 
-
-@app.get("/students")  # decorator : function that takes another function as input and returns a new function
-# Which are the http methods?  
-# GET, POST, PUT, DELETE, PATCH
-# GET : Client gets data from the server
-# POST : Client sends data to the server
-# PUT : Client updates data (complete) on the server
-# DELETE : Client deletes data from the server
-# PATCH : Client partially updates data on the server
+#get all students
+@app.get('/students')
 def get_all_students():
-    cursor.execute("SELECT * FROM students")  # execute the query
-    rows = cursor.fetchall()  # fetch all the rows
-    print(rows)  # print the rows
-
+    cursor.execute('SELECT * FROM students')
+    rows = cursor.fetchall()
+    print(rows)
     result = []
     for row in rows:
         result.append({
-            "id": row[0],
-            "name": row[1],
-            "course": row[2]
+            'id' : row[0],
+            'name' : row[1],
+            'course' : row[2]
         })
-    return result   
-@app.get("/students/{id}")  # path parameter
-def get_student_by_id(id: int): # type hinting : int -> integer ---done by pydantic
-    cursor.execute("SELECT * FROM students WHERE id = %s", (id,))  # execute the query---using parameterized query to prevent SQL injection
-    row = cursor.fetchone()  # fetch one row
+    return result
+
+@app.get('/students/{id}')
+def get_single_student(id: int):
     try:
-            return {
-                "id": row[0],
-                "name": row[1],
-                "course": row[2]
-            }
+        cursor.execute('SELECT * FROM students WHERE id=%s', (id,))
+        row = cursor.fetchone()
+        return{
+            'id' : row[0],
+            'name' : row[1],
+            'course' : row[2]
+        }
     except:
-        raise HTTPException(status_code=404, detail="Student not found") #
+        raise HTTPException(status_code=404, detail='invalid Student ID')
 
-@app.post("/students")  # decorator : function that takes another function as input and returns a new function
-def create_student_record(student: Student):  # type hinting : Student -> Student object
-    
+#Create Student record
+@app.post('/students')
+def create_student_record(student: Student):
     try:
-         
-        cursor.execute("INSERT INTO students (id, name, course) VALUES (%s, %s, %s)", (student.id, student.name, student.course))
-        connection.commit()  # commit the transaction
-        raise HTTPException(status_code=201, detail="Student created")  # return the created student record
+        cursor.execute('insert into students values(%s, %s, %s)',(student.id, student.name, student.course))
+        connection.commit()
+        raise HTTPException(status_code=201, detail='Student Record Created Successfully...!')
     except psycopg2.IntegrityError:
-        connection.rollback()  # rollback the transaction
-        raise HTTPException(status_code=400, detail="Student with this ID already exists")  # return the error message
+        connection.rollback()
+        raise HTTPException(status_code=404, detail='student id already exis!')
 
-# UPDATE STUDENT RECORD
-@app.put("/students/{id}")  # decorator : function that takes another function as input and returns a new function
-#{id} -> path parameter
-def update_student_record(id: int, student: Student):
+
+# Update Student Record        
+@app.put('/students/{id}')
+def update_student_record(id:int, student: Student):
+    cursor.execute('UPDATE students SET id=%s, name=%s, course=%s WHERE id=%s',(student.id, student.name, student.course, id))
+    if(cursor.rowcount==0):
+      raise HTTPException(status_code=404, detail='Invalid ID')    
+    connection.commit()
+    raise HTTPException(status_code=200, detail='Student Record Created Successfully...!')
+
+# Partial Update
+@app.patch('/students/{id}')
+def partial_update(id: int, student:Student):
+    if(student.id != None):
+        cursor.execute('UPDATE students SET id=%s WHERE id=%s' , (student.id, id))
     
-        cursor.execute("UPDATE students SET id = %s, name = %s, course = %s WHERE id = %s", (student.id, student.name, student.course, id))
-        if(cursor.rowcount == 0):
-                raise HTTPException(status_code=404, detail="invalid ID")
-        connection.commit()  # commit the transaction
-        raise HTTPException(status_code=200, detail="Student Record updated")     # return the updated student record
-
-# USING PATCH METHOD TO UPDATE STUDENT RECORD
-@app.patch("/students/{id}")
-def patch_student_record(id: int, student: Student):
-    if (student.id != None):
-        cursor.execute("UPDATE students SET id = %s WHERE id = %s", (student.id, id))
-    if (student.name != None):
-        cursor.execute("UPDATE students SET name = %s WHERE id = %s", (student.name, id))
-    if (student.course != None):
-        cursor.execute("UPDATE students SET course = %s WHERE id = %s", (student.course, id))
-    if(cursor.rowcount == 0):
-        raise HTTPException(status_code=404, detail="invalid ID")
+    if(student.name != None):
+        cursor.execute('UPDATE students SET name=%s WHERE id=%s' , (student.name, id))
+    
+    if(student.course != None):
+        cursor.execute('UPDATE students SET course=%s WHERE id=%s' , (student.course, id))
+    if(cursor.rowcount==0):
+        raise HTTPException(status_code=404, detail='Invalid ID')    
     connection.commit()
-    raise HTTPException(status_code=200, detail="Student Record updated")
+    raise HTTPException(status_code=200, detail='Partial Update Successfully...!')
 
-# DELETE STUDENT RECORD
-@app.delete("/students/{id}")
+# Delete Student Record        
+@app.delete('/students/{id}')
 def delete_student_record(id: int):
-    cursor.execute("DELETE FROM students WHERE id = %s", (id,))
-    if(cursor.rowcount == 0):
-        raise HTTPException(status_code=404, detail="invalid ID")
+    cursor.execute('DELETE FROM students WHERE id=%s', (id,) )
+
+    if cursor.rowcount == 0:
+        raise HTTPException(status_code=404, detail='Invalid ID')
+
     connection.commit()
-    raise HTTPException(status_code=200, detail="Student Record deleted")
+    raise HTTPException(status_code=200,detail='Student Record deleted Successfully...!' )
