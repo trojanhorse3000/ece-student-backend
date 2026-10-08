@@ -87,6 +87,7 @@ def create_student_record(student: Student):
 # Update Student Record        
 @app.put('/students/{id}')
 def update_student_record(id:int, student: Student):
+    cursor = connection.cursor()
     cursor.execute('UPDATE students SET id=%s, name=%s, course=%s WHERE id=%s',(student.id, student.name, student.course, id))
     if(cursor.rowcount==0):
       cursor.close()
@@ -101,7 +102,7 @@ def partial_update(id: int, student:Student):
     cursor = connection.cursor()
     if(student.id != None):
 
-        
+
         cursor.execute('UPDATE students SET id=%s WHERE id=%s' , (student.id, id))
     
     if(student.name != None):
